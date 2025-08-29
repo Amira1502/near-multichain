@@ -10,7 +10,7 @@ import { WalletSelectorProvider } from "@near-wallet-selector/react-hook";
 import { NetworkId } from "./config.js";
 
 const walletSelectorConfig = {
-  network: { networkId: NetworkId, nodeUrl: "https://rpc.testnet.pagoda.co" },
+  network: { networkId: NetworkId, nodeUrl: "https://test.rpc.fastnear.com" },
   modules: [
     setupMyNearWallet(),
     setupHereWallet(),
