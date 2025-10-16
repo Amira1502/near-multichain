@@ -16,7 +16,7 @@
     "@ethereumjs/util": "^9.0.3",
     "@mysten/sui": "^1.30.4",
     "@near-wallet-selector/bitte-wallet": "^9.0.3",
-    "@near-wallet-selector/core": "^9.0.3",
+    "@near-wallet-selector/core": "^9.5.4",
     "@near-wallet-selector/here-wallet": "^9.0.3",
     "@near-wallet-selector/meteor-wallet": "^9.0.3",
     "@near-wallet-selector/modal-ui": "^9.0.3",
@@ -47,15 +47,19 @@
     "web3": "^4.6.0"
   },
   "overrides": {
+    "@near-wallet-selector/core": "^9.5.4",
     "near-api-js": "^5.0.0"
   },
   "devDependencies": {
-    "@types/react": "^18.2.64",
-    "@types/react-dom": "^18.2.21",
+    "@types/react": "^18.3.26",
+    "@types/react-dom": "^18.3.7",
     "eslint": "^8.57.0",
     "eslint-plugin-react": "^7.34.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",
+    "install": "^0.13.0",
+    "npm": "^11.6.2",
+    "typescript": "^5.9.3",
     "vite": "^5.1.6"
   }
 }

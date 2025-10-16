@@ -1,13 +1,17 @@
-import PropTypes from "prop-types";
-
-import { useWalletSelector } from "@near-wallet-selector/react-hook";
 import { useEffect, useState } from "react";
 import { useDebounce } from "../hooks/debounce";
+import { useWalletSelector } from "@near-wallet-selector/react-hook";
 import { SIGNET_CONTRACT } from "../config";
 import { chainAdapters } from "chainsig.js";
 import { Connection as SolanaConnection } from "@solana/web3.js";
 import { bigIntToDecimal } from "../utils/bigIntToDecimal";
 import { decimalToBigInt } from "../utils/decimalToBigInt";
+
+interface SolanaViewProps {
+  props: {
+    setStatus: (status: string | JSX.Element, isLoading?: boolean) => void;
+  };
+}
 
 const connection = new SolanaConnection("https://api.devnet.solana.com");
 
@@ -16,19 +20,19 @@ const Solana = new chainAdapters.solana.Solana({
   contract: SIGNET_CONTRACT,
 });
 
-export function SolanaView({ props: { setStatus } }) {
+export const SolanaView: React.FC<SolanaViewProps> = ({ props }) => {
+  const { setStatus } = props;
   const { signedAccountId, signAndSendTransactions } = useWalletSelector();
 
-  const [receiverAddress, setReceiverAddress] = useState(
-    "G58AYKiiNy7wwjPAeBAQWTM6S1kJwP3MQ3wRWWhhSJxA",
+  const [receiverAddress, setReceiverAddress] = useState<string>(
+    "G58AYKiiNy7wwjPAeBAQWTM6S1kJwP3MQ3wRWWhhSJxA"
   );
-  const [transferAmount, setTransferAmount] = useState(1);
-  const [isLoading, setIsLoading] = useState(false);
-  const [currentStep, setCurrentStep] = useState("request");
-  const [signedTransaction, setSignedTransaction] = useState(null);
-  const [senderAddress, setSenderAddress] = useState("");
-
-  const [derivationPath, setDerivationPath] = useState("solana-1");
+  const [transferAmount, setTransferAmount] = useState<number>(1);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [currentStep, setCurrentStep] = useState<"request" | "relay">("request");
+  const [signedTransaction, setSignedTransaction] = useState<any>(null);
+  const [senderAddress, setSenderAddress] = useState<string>("");
+  const [derivationPath, setDerivationPath] = useState<string>("solana-1");
   const debouncedDerivationPath = useDebounce(derivationPath, 500);
 
   useEffect(() => {
@@ -36,30 +40,32 @@ export function SolanaView({ props: { setStatus } }) {
   }, [derivationPath]);
 
   useEffect(() => {
-    setSolanaAddress();
+    if (!signedAccountId) return;
 
-    async function setSolanaAddress() {
+    const setSolanaAddress = async () => {
       setStatus("Querying your address and balance");
-      setSenderAddress(
-        `Deriving address from path ${debouncedDerivationPath}...`,
-      );
+      setSenderAddress(`Deriving address from path ${debouncedDerivationPath}...`);
 
       const { publicKey } = await Solana.deriveAddressAndPublicKey(
         signedAccountId,
-        debouncedDerivationPath,
+        debouncedDerivationPath
       );
-
       setSenderAddress(publicKey);
 
       const balance = await Solana.getBalance(publicKey);
-
       setStatus(
-        `Your Solana address is: ${publicKey}, balance: ${bigIntToDecimal(balance.balance, balance.decimals)} SOL`,
+        `Your Solana address is: ${publicKey}, balance: ${bigIntToDecimal(
+          balance.balance,
+          balance.decimals
+        )} SOL`
       );
-    }
+    };
+
+    setSolanaAddress();
   }, [signedAccountId, debouncedDerivationPath, setStatus]);
 
-  async function handleChainSignature() {
+  const handleChainSignature = async () => {
+    if (!signedAccountId) return;
     setStatus("🏗️ Creating transaction");
 
     const {
@@ -70,24 +76,18 @@ export function SolanaView({ props: { setStatus } }) {
       amount: decimalToBigInt(transferAmount, 9),
     });
 
-    setStatus(
-      "🕒 Asking MPC to sign the transaction, this might take a while...",
-    );
+    setStatus("🕒 Asking MPC to sign the transaction...");
 
     try {
-      const rsvSignatures = await SIGNET_CONTRACT.sign({
+      const rsvSignatures: any = await SIGNET_CONTRACT.sign({
         payloads: [transaction.serializeMessage()],
         path: debouncedDerivationPath,
         keyType: "Eddsa",
         signerAccount: {
           accountId: signedAccountId,
-          signAndSendTransactions,
+          signAndSendTransactions: signAndSendTransactions as any,
         },
       });
-
-      if (!rsvSignatures[0] || !rsvSignatures[0].signature) {
-        throw new Error("Failed to sign transaction");
-      }
 
       const finalizedTransaction = Solana.finalizeTransactionSigning({
         transaction,
@@ -95,44 +95,38 @@ export function SolanaView({ props: { setStatus } }) {
         senderAddress,
       });
 
-      setStatus("✅ Signed payload ready to be relayed to the Solana network");
       setSignedTransaction(finalizedTransaction);
+      setStatus("✅ Signed payload ready to be relayed to the Solana network");
       setCurrentStep("relay");
-    } catch (error) {
-      console.log(error);
+    } catch (error: any) {
+      console.error(error);
       setStatus(`❌ Error: ${error.message}`);
       setIsLoading(false);
     }
-  }
+  };
 
-  async function handleRelayTransaction() {
+  const handleRelayTransaction = async () => {
     setIsLoading(true);
-    setStatus(
-      "🔗 Relaying transaction to the Solana network... this might take a while",
-    );
+    setStatus("🔗 Relaying transaction to the Solana network...");
 
     try {
       const transactionHash = await Solana.broadcastTx(signedTransaction);
-
       setStatus(
-        <>
-          <a
-            href={`https://explorer.solana.com/tx/${transactionHash.hash}?cluster=devnet`}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {" "}
-            ✅ Successfully Broadcasted{" "}
-          </a>
-        </>,
+        <a
+          href={`https://explorer.solana.com/tx/${transactionHash.hash}?cluster=devnet`}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          ✅ Successfully Broadcasted
+        </a>
       );
-    } catch (error) {
+    } catch (error: any) {
       setStatus(`❌ Error: ${error.message}`);
     }
 
     setCurrentStep("request");
     setIsLoading(false);
-  }
+  };
 
   const handleUIChainSignature = async () => {
     setIsLoading(true);
@@ -142,23 +136,17 @@ export function SolanaView({ props: { setStatus } }) {
 
   return (
     <>
-      <div className="alert alert-info text-center" role="alert">
+      <div className="alert alert-info text-center">
         You are working with <strong>DevNet</strong>.
         <br />
-        You can get funds from the faucet:
-        <a
-          href="https://faucet.solana.com/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="alert-link"
-        >
-          faucet.solana.com/
+        Faucet:{" "}
+        <a href="https://faucet.solana.com/" target="_blank" rel="noopener noreferrer">
+          faucet.solana.com
         </a>
       </div>
+
       <div className="row my-3">
-        <label className="col-sm-2 col-form-label col-form-label-sm">
-          Path:
-        </label>
+        <label className="col-sm-2 col-form-label col-form-label-sm">Path:</label>
         <div className="col-sm-10">
           <input
             type="text"
@@ -167,12 +155,10 @@ export function SolanaView({ props: { setStatus } }) {
             onChange={(e) => setDerivationPath(e.target.value)}
             disabled={isLoading}
           />
-          <div className="form-text" id="sol-sender">
-            {" "}
-            {senderAddress}{" "}
-          </div>
+          <div className="form-text">{senderAddress}</div>
         </div>
       </div>
+
       <div className="row mb-3">
         <label className="col-sm-2 col-form-label col-form-label-sm">To:</label>
         <div className="col-sm-10">
@@ -185,56 +171,37 @@ export function SolanaView({ props: { setStatus } }) {
           />
         </div>
       </div>
+
       <div className="row mb-3">
-        <label className="col-sm-2 col-form-label col-form-label-sm">
-          Amount:
-        </label>
+        <label className="col-sm-2 col-form-label col-form-label-sm">Amount:</label>
         <div className="col-sm-10">
           <div className="input-group">
             <input
               type="number"
               className="form-control form-control-sm"
               value={transferAmount}
-              onChange={(e) => setTransferAmount(e.target.value)}
-              step="0.1"
-              min="0"
+              onChange={(e) => setTransferAmount(Number(e.target.value))}
+              step={0.1}
+              min={0}
               disabled={isLoading}
             />
-            <span className="input-group-text bg-primary text-white fw-bold">
-              SOL
-            </span>
+            <span className="input-group-text bg-primary text-white fw-bold">SOL</span>
           </div>
         </div>
       </div>
 
       <div className="text-center mt-3">
         {currentStep === "request" && (
-          <button
-            className="btn btn-primary text-center"
-            onClick={handleUIChainSignature}
-            disabled={isLoading}
-          >
-            {" "}
-            Request Signature{" "}
+          <button className="btn btn-primary" onClick={handleUIChainSignature} disabled={isLoading}>
+            Request Signature
           </button>
         )}
         {currentStep === "relay" && (
-          <button
-            className="btn btn-success text-center"
-            onClick={handleRelayTransaction}
-            disabled={isLoading}
-          >
-            {" "}
-            Relay Transaction{" "}
+          <button className="btn btn-success" onClick={handleRelayTransaction} disabled={isLoading}>
+            Relay Transaction
           </button>
         )}
       </div>
     </>
   );
-}
-
-SolanaView.propTypes = {
-  props: PropTypes.shape({
-    setStatus: PropTypes.func.isRequired,
-  }).isRequired,
 };
