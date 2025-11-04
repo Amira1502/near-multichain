@@ -9,18 +9,19 @@ import { setupHereWallet } from "@near-wallet-selector/here-wallet";
 import { setupMeteorWallet } from "@near-wallet-selector/meteor-wallet";
 import { setupBitteWallet } from "@near-wallet-selector/bitte-wallet";
 import { WalletSelectorProvider } from "@near-wallet-selector/react-hook";
+import type { WalletModuleFactory } from "@near-wallet-selector/core";
 
 import { NetworkId } from "./config";
 
-// Wallet selector config with minimal type casting
+// Wallet selector config with proper typing
 const walletSelectorConfig = {
   network: NetworkId,
   modules: [
-    setupMyNearWallet() as any,
-    setupHereWallet() as any,
-    setupMeteorWallet() as any,
-    setupBitteWallet() as any,
-  ],
+    setupMyNearWallet(),
+    setupHereWallet(),
+    setupMeteorWallet(),
+    setupBitteWallet(),
+  ] as WalletModuleFactory[],
 };
 
 // Render the app

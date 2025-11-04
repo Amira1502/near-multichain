@@ -6,12 +6,7 @@ import { useDebounce } from "../hooks/debounce";
 import { bigIntToDecimal } from "../utils/bigIntToDecimal";
 import { decimalToBigInt } from "../utils/decimalToBigInt";
 import { Aptos as AptosClient, AptosConfig, Network } from "@aptos-labs/ts-sdk";
-
-interface AptosViewProps {
-  props: {
-    setStatus: (status: string | JSX.Element) => void;
-  };
-}
+import { StatusSetter } from "../types/StatusSetter";
 
 const aptosClient = new AptosClient(
   new AptosConfig({
@@ -24,7 +19,7 @@ const Aptos = new chainAdapters.aptos.Aptos({
   contract: SIGNET_CONTRACT,
 });
 
-export function AptosView({ props: { setStatus } }: AptosViewProps) {
+export function AptosView({ setStatus }: StatusSetter) {
   const { signedAccountId, signAndSendTransactions } = useWalletSelector();
 
   const [receiverAddress, setReceiverAddress] = useState<string>(
@@ -33,7 +28,7 @@ export function AptosView({ props: { setStatus } }: AptosViewProps) {
   const [transferAmount, setTransferAmount] = useState<number>(1);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [currentStep, setCurrentStep] = useState<"request" | "relay">("request");
-  const [signedTransaction, setSignedTransaction] = useState<any>(null);
+  const [signedTransaction, setSignedTransaction] = useState<string | null>(null);
   const [senderAddress, setSenderAddress] = useState<string>("");
   const [senderPublicKey, setSenderPublicKey] = useState<string>("");
 
@@ -76,16 +71,12 @@ export function AptosView({ props: { setStatus } }: AptosViewProps) {
 
     setStatus("🏗️ Creating transaction");
 
-    const transactionPayload = {
-      function: "0x1::aptos_account::transfer",
-      functionArguments: [receiverAddress, decimalToBigInt(transferAmount, 8)],
-      // @ts-ignore - suppress missing multisigAddress requirement
-    };
-
     const transaction = await aptosClient.transaction.build.simple({
       sender: senderAddress,
-      // @ts-expect-error suppress Aptos typing mismatch
-      data: transactionPayload,
+      data: {
+        function: "0x1::aptos_account::transfer",
+        functionArguments: [receiverAddress, decimalToBigInt(transferAmount, 8)],
+      },
     });
 
     const { hashesToSign } = await Aptos.prepareTransactionForSigning(transaction);
@@ -98,10 +89,8 @@ export function AptosView({ props: { setStatus } }: AptosViewProps) {
         keyType: "Eddsa",
         signerAccount: {
           accountId: signedAccountId!,
-          // fix signature type
-          signAndSendTransactions: signAndSendTransactions as unknown as (
-            params: { transactions: any[] },
-          ) => Promise<any>,
+          // @ts-expect-error - Type incompatibility between wallet selector and chainsig.js
+          signAndSendTransactions,
         },
       });
 
@@ -110,17 +99,20 @@ export function AptosView({ props: { setStatus } }: AptosViewProps) {
         transaction,
         rsvSignatures: {
           scheme: "ed25519",
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           signature: (rsvSignatures[0] as any).signature ?? "",
-        } as any,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        },
         publicKey: senderPublicKey,
       });
 
       setSignedTransaction(finalizedTransaction);
       setStatus("✅ Signed payload ready to be relayed to the Aptos network");
       setCurrentStep("relay");
-    } catch (error: any) {
+    } catch (error) {
       console.error(error);
-      setStatus(`❌ Error: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      setStatus(`❌ Error: ${errorMessage}`);
       setIsLoading(false);
     }
   }
@@ -130,6 +122,10 @@ export function AptosView({ props: { setStatus } }: AptosViewProps) {
     setStatus("🔗 Relaying transaction to the Aptos network...");
 
     try {
+      if (!signedTransaction) {
+        throw new Error("No signed transaction available");
+      }
+      
       const transactionHash = await Aptos.broadcastTx(signedTransaction);
 
       setStatus(
@@ -143,14 +139,15 @@ export function AptosView({ props: { setStatus } }: AptosViewProps) {
           </a>
         </>,
       );
-    } catch (error: any) {
-      if (error.message.includes("TRANSACTION_EXPIRED")) {
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      if (errorMessage.includes("TRANSACTION_EXPIRED")) {
         setStatus("⏰ Transaction expired, creating a new one...");
         setCurrentStep("request");
         setIsLoading(false);
         return;
       }
-      setStatus(`❌ Error: ${error.message}`);
+      setStatus(`❌ Error: ${errorMessage}`);
     }
 
     setCurrentStep("request");

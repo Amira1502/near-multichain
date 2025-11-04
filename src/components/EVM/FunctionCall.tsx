@@ -1,14 +1,15 @@
-import { useState, useEffect, forwardRef, useImperativeHandle } from "react";
+import { useState, useEffect, forwardRef, useImperativeHandle, useCallback, useMemo } from "react";
 import { Contract, JsonRpcProvider } from "ethers";
+import { chainAdapters } from "chainsig.js";
 import { ABI } from "../../config";
 
 export interface FunctionCallFormHandle {
-  createTransaction: () => Promise<any>;
+  createTransaction: () => Promise<{ transaction: unknown; hashesToSign: unknown[] }>;
   afterRelay: () => void;
 }
 
 interface FunctionCallFormProps {
-  Evm: any; // use proper type from chainsig
+  Evm: chainAdapters.evm.EVM;
   senderAddress: string;
   contractAddress: string;
   rpcUrl: string;
@@ -20,17 +21,17 @@ export const FunctionCallForm = forwardRef<FunctionCallFormHandle, FunctionCallF
     const [number, setNumber] = useState(1000);
     const [currentNumber, setCurrentNumber] = useState("");
 
-    const provider = new JsonRpcProvider(rpcUrl);
-    const contract = new Contract(contractAddress, ABI, provider);
+    const provider = useMemo(() => new JsonRpcProvider(rpcUrl), [rpcUrl]);
+    const contract = useMemo(() => new Contract(contractAddress, ABI, provider), [contractAddress, provider]);
 
-    const getNumber = async () => {
+    const getNumber = useCallback(async () => {
       const result = await contract.get();
       setCurrentNumber(String(result));
-    };
+    }, [contract]);
 
     useEffect(() => {
       getNumber();
-    }, []);
+    }, [getNumber]);
 
     useImperativeHandle(ref, () => ({
       async createTransaction() {
@@ -38,7 +39,7 @@ export const FunctionCallForm = forwardRef<FunctionCallFormHandle, FunctionCallF
         return await Evm.prepareTransactionForSigning({
           from: senderAddress as `0x${string}`,
           to: contractAddress as `0x${string}`,
-          data,
+          data: data as `0x${string}`,
         });
       },
       async afterRelay() {

@@ -4,6 +4,7 @@ import { SIGNET_CONTRACT, NetworkId } from "../config";
 import { useWalletSelector } from "@near-wallet-selector/react-hook";
 import { chainAdapters } from "chainsig.js";
 import { bigIntToDecimal } from "../utils/bigIntToDecimal";
+import { StatusSetter } from "../types/StatusSetter";
 
 const btcRpcAdapter = new chainAdapters.btc.BTCRpcAdapters.Mempool(
   "https://mempool.space/testnet4/api"
@@ -15,14 +16,7 @@ const Bitcoin = new chainAdapters.btc.Bitcoin({
   contract: SIGNET_CONTRACT,
 });
 
-interface BitcoinViewProps {
-  props: {
-    setStatus: (status: string | JSX.Element, isLoading?: boolean) => void;
-  };
-}
-
-export const BitcoinView: React.FC<BitcoinViewProps> = ({ props }) => {
-  const { setStatus } = props;
+export const BitcoinView: React.FC<StatusSetter> = ({ setStatus }) => {
   const { signedAccountId, signAndSendTransactions } = useWalletSelector();
 
   const [receiverAddress, setReceiverAddress] = useState<string>(
@@ -31,7 +25,7 @@ export const BitcoinView: React.FC<BitcoinViewProps> = ({ props }) => {
   const [transferAmount, setTransferAmount] = useState<number>(1000);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [currentStep, setCurrentStep] = useState<"request" | "relay">("request");
-  const [signedTransaction, setSignedTransaction] = useState<any>(null);
+  const [signedTransaction, setSignedTransaction] = useState<string | null>(null);
   const [senderAddress, setSenderAddress] = useState<string>("");
   const [senderPublicKey, setSenderPublicKey] = useState<string>("");
 
@@ -78,13 +72,14 @@ export const BitcoinView: React.FC<BitcoinViewProps> = ({ props }) => {
 
     setStatus("🕒 Asking MPC to sign the transaction, this might take a while...");
     try {
-      const rsvSignatures: any = await SIGNET_CONTRACT.sign({
+      const rsvSignatures = await SIGNET_CONTRACT.sign({
         payloads: hashesToSign,
         path: debouncedDerivationPath,
         keyType: "Ecdsa",
         signerAccount: {
           accountId: signedAccountId!,
-          signAndSendTransactions: signAndSendTransactions as any,
+          // @ts-expect-error - Type incompatibility between wallet selector and chainsig.js
+          signAndSendTransactions,
         },
       });
 
@@ -98,14 +93,20 @@ export const BitcoinView: React.FC<BitcoinViewProps> = ({ props }) => {
       setStatus("✅ Signed payload ready to be relayed to the Bitcoin network");
       setSignedTransaction(finalizedTransaction);
       setCurrentStep("relay");
-    } catch (error: any) {
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
       console.log(error);
-      setStatus(`❌ Error: ${error.message}`);
+      setStatus(`❌ Error: ${errorMessage}`);
       setIsLoading(false);
     }
   };
 
   const handleRelayTransaction = async () => {
+    if (!signedTransaction) {
+      setStatus("❌ Error: No signed transaction available");
+      return;
+    }
+
     setIsLoading(true);
     setStatus("🔗 Relaying transaction to the Bitcoin network...");
 
@@ -121,8 +122,9 @@ export const BitcoinView: React.FC<BitcoinViewProps> = ({ props }) => {
           ✅ Successfully Broadcasted
         </a>
       );
-    } catch (error: any) {
-      setStatus(`❌ Error: ${error.message}`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      setStatus(`❌ Error: ${errorMessage}`);
     }
 
     setCurrentStep("request");

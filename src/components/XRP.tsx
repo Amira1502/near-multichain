@@ -5,12 +5,8 @@ import { chainAdapters } from "chainsig.js";
 import { decimalToBigInt } from "../utils/decimalToBigInt";
 import { bigIntToDecimal } from "../utils/bigIntToDecimal";
 import { useWalletSelector } from "@near-wallet-selector/react-hook";
+import { StatusSetter } from "../types/StatusSetter";
 
-type XRPViewProps = {
-  props: {
-    setStatus: (status: string | JSX.Element) => void;
-  };
-};
 
 type RSVSignature = {
   r: string;
@@ -23,7 +19,7 @@ const Xrp = new chainAdapters.xrp.XRP({
   contract: SIGNET_CONTRACT,
 });
 
-export function XRPView({ props: { setStatus } }: XRPViewProps) {
+export function XRPView({ setStatus }: StatusSetter) {
   const { signedAccountId, signAndSendTransactions } = useWalletSelector();
 
   const [receiverAddress, setReceiverAddress] = useState(
@@ -34,7 +30,7 @@ export function XRPView({ props: { setStatus } }: XRPViewProps) {
   const [currentStep, setCurrentStep] = useState<"request" | "relay">(
     "request"
   );
-  const [signedTransaction, setSignedTransaction] = useState<any>(null);
+  const [signedTransaction, setSignedTransaction] = useState<string | null>(null);
   const [senderAddress, setSenderAddress] = useState("");
   const [senderPublicKey, setSenderPublicKey] = useState("");
 
@@ -97,9 +93,8 @@ export function XRPView({ props: { setStatus } }: XRPViewProps) {
         keyType: "Ecdsa",
         signerAccount: {
           accountId: signedAccountId,
-            signAndSendTransactions: signAndSendTransactions as unknown as (
-            params: { transactions: any[] },
-          ) => Promise<any>,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          signAndSendTransactions: signAndSendTransactions as any,
         },
 
       });
@@ -117,9 +112,9 @@ export function XRPView({ props: { setStatus } }: XRPViewProps) {
       setStatus("✅ Signed payload ready to be relayed to the XRP network");
       setSignedTransaction(finalizedTransaction);
       setCurrentStep("relay");
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.log(error);
-      setStatus(`❌ Error: ${error.message}`);
+      setStatus(`❌ Error: ${error instanceof Error ? error.message : String(error)}`);
       setIsLoading(false);
     }
   };
@@ -143,8 +138,8 @@ export function XRPView({ props: { setStatus } }: XRPViewProps) {
           ✅ Successfully Broadcasted
         </a>
       );
-    } catch (error: any) {
-      setStatus(`❌ Error: ${error.message}`);
+    } catch (error: unknown) {
+      setStatus(`❌ Error: ${error instanceof Error ? error.message : String(error)}`);
     }
 
     setCurrentStep("request");

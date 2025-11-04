@@ -29,7 +29,7 @@ type ChainGroup = {
 interface OtherChain {
   value: string;
   label: string;
-  component: React.ComponentType<{ props: { setStatus: (status: string | JSX.Element, isLoading?: boolean) => void } }>;
+  component: React.ComponentType<{ setStatus: (status: string | JSX.Element, isLoading?: boolean) => void }>;
 }
 
 const otherChains: OtherChain[] = [
@@ -95,8 +95,6 @@ const createChainOption = (value: string, label: string, altText = label): Chain
   ];
 
   const renderChainView = () => {
-    const commonProps = { setStatus: handleSetStatus };
-
     // EVM Networks
     if (selectedNetwork) {
       return <EVMView
@@ -110,7 +108,7 @@ const createChainOption = (value: string, label: string, altText = label): Chain
     const chainConfig = otherChains.find((chain) => chain.value === selectedChain);
     if (chainConfig) {
       const ChainComponent = chainConfig.component;
-      return <ChainComponent props={commonProps} />;
+      return <ChainComponent setStatus={handleSetStatus} />;
     }
 
     return null;

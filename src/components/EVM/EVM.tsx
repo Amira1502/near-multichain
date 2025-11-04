@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Web3 from "web3";
 import { createPublicClient, http } from "viem";
 import { chainAdapters } from "chainsig.js";
@@ -25,7 +25,6 @@ interface EVMViewProps {
 export function EVMView({ setStatus, network }: EVMViewProps) {
   const { signedAccountId, signAndSendTransactions: walletSignAndSendTransactions } = useWalletSelector();
 
-  // ✅ Fix: Wrapper ensures type compatibility
   const signAndSendTransactions = async ({
     transactions,
   }: {
@@ -43,7 +42,7 @@ export function EVMView({ setStatus, network }: EVMViewProps) {
   const [derivationPath, setDerivationPath] = useState(
     `${network.network.replace(/\s/g, "").toLowerCase()}-1`
   );
-  const [signedTransaction, setSignedTransaction] = useState<any>();
+  const [signedTransaction, setSignedTransaction] = useState<string | null>(null);
   const [gasPriceInGwei, setGasPriceInGwei] = useState<string>("");
   const [txCost, setTxCost] = useState<string>("");
 
@@ -51,8 +50,11 @@ export function EVMView({ setStatus, network }: EVMViewProps) {
   const web3 = new Web3(network.rpcUrl);
 
   const publicClient = createPublicClient({ transport: http(network.rpcUrl) });
-
-  const Evm = new chainAdapters.evm.EVM({ publicClient, contract: SIGNET_CONTRACT });
+  
+  const Evm = useMemo(() => 
+    new chainAdapters.evm.EVM({ publicClient, contract: SIGNET_CONTRACT }),
+    [publicClient]
+  );
 
   // Fetch gas price
   useEffect(() => {
@@ -71,23 +73,17 @@ export function EVMView({ setStatus, network }: EVMViewProps) {
     }
 
     fetchGasPrice();
-  }, []);
+  }, [web3.eth, web3.utils]);
 
-  // Fetch Ethereum address and balance
-  useEffect(() => {
-    resetAddressState();
-    fetchEthereumAddress();
-  }, [derivationPath, signedAccountId]);
-
-  const resetAddressState = () => {
+  const resetAddressState = useCallback(() => {
     setSenderLabel("Waiting for you to stop typing...");
     setSenderAddress("");
     setStatus("");
     setBalance("");
     setCurrentStep("request");
-  };
+  }, [setStatus]);
 
-  const fetchEthereumAddress = async () => {
+  const fetchEthereumAddress = useCallback(async () => {
     const result = await Evm.deriveAddressAndPublicKey(
       signedAccountId!,
       derivationPath
@@ -98,7 +94,13 @@ export function EVMView({ setStatus, network }: EVMViewProps) {
 
     const balanceValue = (await Evm.getBalance(address)) as { balance: bigint; decimals: number };
     setBalance(bigIntToDecimal(balanceValue.balance, balanceValue.decimals));
-  };
+  }, [Evm, signedAccountId, derivationPath]);
+
+  // Fetch Ethereum address and balance
+  useEffect(() => {
+    resetAddressState();
+    fetchEthereumAddress();
+  }, [derivationPath, signedAccountId, resetAddressState, fetchEthereumAddress]);
 
   const chainSignature = async () => {
     setStatus("🏗️ Creating transaction");
@@ -113,9 +115,8 @@ export function EVMView({ setStatus, network }: EVMViewProps) {
         keyType: "Ecdsa",
         signerAccount: {
           accountId: signedAccountId!,
-           signAndSendTransactions: signAndSendTransactions as unknown as (
-           params: { transactions: any[] }
-           ) => Promise<any>,
+           // eslint-disable-next-line @typescript-eslint/no-explicit-any
+           signAndSendTransactions: signAndSendTransactions as any,
         },
       });
 
@@ -127,9 +128,10 @@ export function EVMView({ setStatus, network }: EVMViewProps) {
       setSignedTransaction(finalizedTransaction);
       setStatus(`✅ Signed payload ready to be relayed to the Ethereum network`);
       setCurrentStep("relay");
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      setStatus(`❌ Error: ${err.message}`);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setStatus(`❌ Error: ${errorMessage}`);
       setIsLoading(false);
     }
   };
@@ -138,6 +140,9 @@ export function EVMView({ setStatus, network }: EVMViewProps) {
     setIsLoading(true);
     setStatus("🔗 Relaying transaction to the Ethereum network... this might take a while");
     try {
+      if (!signedTransaction) {
+        throw new Error("No signed transaction available");
+      }
       const txHash = await Evm.broadcastTx(signedTransaction);
       setStatus(
         <a href={`${network.explorerUrl}${txHash.hash}`} target="_blank" rel="noreferrer">
@@ -145,8 +150,9 @@ export function EVMView({ setStatus, network }: EVMViewProps) {
         </a>
       );
       childRef.current!.afterRelay();
-    } catch (err: any) {
-      setStatus(`❌ Error: ${err.message}`);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setStatus(`❌ Error: ${errorMessage}`);
     }
     setCurrentStep("request");
     setIsLoading(false);

@@ -6,12 +6,7 @@ import { chainAdapters } from "chainsig.js";
 import { Connection as SolanaConnection } from "@solana/web3.js";
 import { bigIntToDecimal } from "../utils/bigIntToDecimal";
 import { decimalToBigInt } from "../utils/decimalToBigInt";
-
-interface SolanaViewProps {
-  props: {
-    setStatus: (status: string | JSX.Element, isLoading?: boolean) => void;
-  };
-}
+import { StatusSetter } from "../types/StatusSetter";
 
 const connection = new SolanaConnection("https://api.devnet.solana.com");
 
@@ -20,8 +15,7 @@ const Solana = new chainAdapters.solana.Solana({
   contract: SIGNET_CONTRACT,
 });
 
-export const SolanaView: React.FC<SolanaViewProps> = ({ props }) => {
-  const { setStatus } = props;
+export const SolanaView: React.FC<StatusSetter> = ({ setStatus }) => {
   const { signedAccountId, signAndSendTransactions } = useWalletSelector();
 
   const [receiverAddress, setReceiverAddress] = useState<string>(
@@ -30,7 +24,7 @@ export const SolanaView: React.FC<SolanaViewProps> = ({ props }) => {
   const [transferAmount, setTransferAmount] = useState<number>(1);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [currentStep, setCurrentStep] = useState<"request" | "relay">("request");
-  const [signedTransaction, setSignedTransaction] = useState<any>(null);
+  const [signedTransaction, setSignedTransaction] = useState<string | null>(null);
   const [senderAddress, setSenderAddress] = useState<string>("");
   const [derivationPath, setDerivationPath] = useState<string>("solana-1");
   const debouncedDerivationPath = useDebounce(derivationPath, 500);
@@ -79,33 +73,41 @@ export const SolanaView: React.FC<SolanaViewProps> = ({ props }) => {
     setStatus("🕒 Asking MPC to sign the transaction...");
 
     try {
-      const rsvSignatures: any = await SIGNET_CONTRACT.sign({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rsvSignatures = await SIGNET_CONTRACT.sign({
         payloads: [transaction.serializeMessage()],
         path: debouncedDerivationPath,
         keyType: "Eddsa",
         signerAccount: {
           accountId: signedAccountId,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           signAndSendTransactions: signAndSendTransactions as any,
         },
       });
 
       const finalizedTransaction = Solana.finalizeTransactionSigning({
         transaction,
-        rsvSignatures: rsvSignatures[0],
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        rsvSignatures: rsvSignatures[0] as any,
         senderAddress,
       });
 
       setSignedTransaction(finalizedTransaction);
       setStatus("✅ Signed payload ready to be relayed to the Solana network");
       setCurrentStep("relay");
-    } catch (error: any) {
+    } catch (error) {
       console.error(error);
-      setStatus(`❌ Error: ${error.message}`);
+      setStatus(`❌ Error: ${error instanceof Error ? error.message : String(error)}`);
       setIsLoading(false);
     }
   };
 
   const handleRelayTransaction = async () => {
+    if (!signedTransaction) {
+      setStatus("❌ Error: No signed transaction available");
+      return;
+    }
+
     setIsLoading(true);
     setStatus("🔗 Relaying transaction to the Solana network...");
 
@@ -120,8 +122,8 @@ export const SolanaView: React.FC<SolanaViewProps> = ({ props }) => {
           ✅ Successfully Broadcasted
         </a>
       );
-    } catch (error: any) {
-      setStatus(`❌ Error: ${error.message}`);
+    } catch (error) {
+      setStatus(`❌ Error: ${error instanceof Error ? error.message : String(error)}`);
     }
 
     setCurrentStep("request");

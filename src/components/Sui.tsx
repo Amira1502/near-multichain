@@ -7,18 +7,7 @@ import { getFullnodeUrl, SuiClient } from "@mysten/sui/client";
 import { Transaction } from "@mysten/sui/transactions";
 import { bigIntToDecimal } from "../utils/bigIntToDecimal";
 import { decimalToBigInt } from "../utils/decimalToBigInt";
-
-interface SuiViewProps {
-  props: {
-    setStatus: (status: string | JSX.Element) => void;
-  };
-}
-
-// Proper Signature type expected by finalizeTransactionSigning
-interface Signature {
-  scheme: "ED25519";
-  signature: Uint8Array;
-}
+import { StatusSetter } from "../types/StatusSetter";
 
 const rpcUrl = getFullnodeUrl("testnet");
 const suiClient = new SuiClient({ url: rpcUrl });
@@ -28,7 +17,7 @@ const Sui = new chainAdapters.sui.SUI({
   rpcUrl,
 });
 
-export const SuiView: React.FC<SuiViewProps> = ({ props: { setStatus } }) => {
+export const SuiView: React.FC<StatusSetter> = ({ setStatus }) => {
   const { signedAccountId, signAndSendTransactions } = useWalletSelector();
 
   const [receiverAddress, setReceiverAddress] = useState(
@@ -37,7 +26,7 @@ export const SuiView: React.FC<SuiViewProps> = ({ props: { setStatus } }) => {
   const [transferAmount, setTransferAmount] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState<"request" | "relay">("request");
-  const [signedTransaction, setSignedTransaction] = useState<any>(null);
+  const [signedTransaction, setSignedTransaction] = useState<string | null>(null);
   const [senderAddress, setSenderAddress] = useState("");
   const [senderPublicKey, setSenderPublicKey] = useState("");
 
@@ -89,44 +78,47 @@ export const SuiView: React.FC<SuiViewProps> = ({ props: { setStatus } }) => {
     setStatus("🕒 Asking MPC to sign the transaction...");
 
     try {
-      // Map Near Wallet selector type
-      const signerAccount = {
-        accountId: signedAccountId,
-        signAndSendTransactions: async (params: { transactions: any[] }) => {
-          const txs = params.transactions.map((tx) => ({
-            ...tx,
-            signerId: tx.signerId || signedAccountId,
-          }));
-          return signAndSendTransactions({ transactions: txs });
-        },
-      };
-      
-      const rsvSignatures: any = await SIGNET_CONTRACT.sign({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rsvSignatures = await SIGNET_CONTRACT.sign({
         payloads: hashesToSign,
         path: debouncedDerivationPath,
         keyType: "Eddsa",
         signerAccount: {
           accountId: signedAccountId,
-          signAndSendTransactions: signAndSendTransactions as any,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          signAndSendTransactions: async (transactions: { transactions: any[] }) => {
+            const txs = transactions.transactions.map((tx) => ({
+              ...tx,
+              signerId: tx.signerId || signedAccountId,
+            }));
+            return signAndSendTransactions({ transactions: txs });
+          },
         },
       });
 
       const finalizedTransaction = Sui.finalizeTransactionSigning({
         transaction,
-        rsvSignatures: rsvSignatures[0],
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        rsvSignatures: rsvSignatures[0] as any,
         publicKey: senderPublicKey,
       });
 
       setSignedTransaction(finalizedTransaction);
       setStatus("✅ Signed payload ready to be relayed to the Sui network");
       setCurrentStep("relay");
-    } catch (error: any) {
-      setStatus(`❌ Error: ${error.message}`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+      setStatus(`❌ Error: ${errorMessage}`);
       setIsLoading(false);
     }
   };
 
   const handleRelayTransaction = async () => {
+    if (!signedTransaction) {
+      setStatus("❌ Error: No signed transaction available");
+      return;
+    }
+
     setIsLoading(true);
     setStatus("🔗 Relaying transaction to the Sui network...");
 
@@ -141,8 +133,9 @@ export const SuiView: React.FC<SuiViewProps> = ({ props: { setStatus } }) => {
           ✅ Successfully Broadcasted
         </a>
       );
-    } catch (error: any) {
-      setStatus(`❌ Error: ${error.message}`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+      setStatus(`❌ Error: ${errorMessage}`);
     }
 
     setCurrentStep("request");
